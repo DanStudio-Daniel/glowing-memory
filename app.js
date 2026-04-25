@@ -25,7 +25,7 @@ const mongoURI = "mongodb+srv://danielmojar84_db_user:nDG9hpTU0uHZtxYO@cluster0.
 mongoose.connect(mongoURI)
 .then(() => {
     console.log("✅ MongoDB Connected Successfully");
-    announceUpdate(); // 📢 Announce update to all users on startup
+    announceUpdate(); 
 })
 .catch(err => console.log("❌ MongoDB Connection Error:", err));
 
@@ -41,20 +41,47 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model("User", userSchema);
 
 // ==========================
+// 🚫 PROFANITY FILTER
+// ==========================
+const badWords = [
+    "stupid", "idiot", "fuck", "shit", "bitch", "asshole", "dick", "pussy", "faggot", "bastard", 
+    "porn", "hentai", "sex", "xxx", "cum", "milf", "cock", "slut", "whore", "nigga", "nigger",
+    "tangina", "puta", "gago", "pucha", "putragis", "hayop", "bobo", "tanga", "kupal", "pakyu", 
+    "dede", "bulbul", "burat", "bayag", "kantot", "iyot", "pepe", "puke", "etits", "salsal", 
+    "jakol", "manyak", "pokpok", "bilat", "paltik", "tite", "titik", "utin"
+];
+
+function filterBadWords(text) {
+    if (!text) return text;
+    let filteredText = text;
+    badWords.forEach(word => {
+        const pattern = word.split('').map(char => {
+            let v = char;
+            if (char === 'a') v = '[a4@]';
+            if (char === 'e') v = '[e3]';
+            if (char === 'i') v = '[i1!]';
+            if (char === 'o') v = '[o0]';
+            if (char === 's') v = '[s5$]';
+            if (char === 't') v = '[t7]';
+            if (char === 'p') v = '[p|]';
+            return v + '+';
+        }).join('[\\s\\W\\._]*');
+        const regex = new RegExp(pattern, 'gi');
+        filteredText = filteredText.replace(regex, (matched) => "*".repeat(matched.length));
+    });
+    return filteredText;
+}
+
+// ==========================
 // 📢 ANNOUNCEMENT ON DEPLOY
 // ==========================
 async function announceUpdate() {
     try {
         const users = await User.find({}, 'psid');
-        const message = `📢 BOT UPDATE\n────────────────────\nBot has been updated, conversations are cutted during update, please reply 'chat' to find a new stranger.`;
-        
-        for (let user of users) {
-            await sendMessage(user.psid, message);
-        }
+        const message = `📢 BOT UPDATE\n────────────────────\nBot has been updated!\n\n✨ WHAT'S NEW:\n- Send Audio 🎙️\n- Send Video 📹\n- Asterisk Bad Words System 🚫\n\nConversations were cut during update. Reply 'chat' to find a new stranger!`;
+        for (let user of users) { await sendMessage(user.psid, message); }
         console.log(`🚀 Announcement sent to ${users.length} users.`);
-    } catch (e) {
-        console.log("❌ Announcement Error");
-    }
+    } catch (e) { console.log("❌ Announcement Error"); }
 }
 
 // ==========================
@@ -63,9 +90,7 @@ async function announceUpdate() {
 app.get('/webhook', (req, res) => {
     if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === VERIFY_TOKEN) {
         res.status(200).send(req.query['hub.challenge']);
-    } else {
-        res.sendStatus(403);
-    }
+    } else { res.sendStatus(403); }
 });
 
 // ==========================
@@ -73,7 +98,6 @@ app.get('/webhook', (req, res) => {
 // ==========================
 app.post('/webhook', async (req, res) => {
     const body = req.body;
-
     if (body.object === 'page') {
         body.entry.forEach(entry => {
             entry.messaging.forEach(async event => {
@@ -95,10 +119,9 @@ app.post('/webhook', async (req, res) => {
 
                     let commandHandled = false;
                     
-                    // Priority Commands
                     if (lowerText === "quit" || lowerText === "/profile" || lowerText === "chat") {
                         if (!userData && !tempState[senderId]) {
-                            await sendMessage(senderId, `❌ ACCESS DENIED\n────────────────────\nYour profile is not yet initialized. You cannot use this command without an account.\n\nPlease type /setinfo to register.`);
+                            await sendMessage(senderId, `❌ ACCESS DENIED\n────────────────────\nYour profile is not yet initialized.\n\nPlease type /setinfo to register.`);
                             return;
                         }
                     }
@@ -106,8 +129,7 @@ app.post('/webhook', async (req, res) => {
                     if (lowerText === "quit") {
                         await handleQuit(senderId);
                         commandHandled = true;
-                    }
-                    else if (lowerText.startsWith("/admin ") || lowerText.startsWith("/ban ") || lowerText.startsWith("/unban ") || lowerText.startsWith("/loginowner ") || lowerText === "/setinfo" || tempState[senderId]) {
+                    } else if (lowerText.startsWith("/admin ") || lowerText.startsWith("/ban ") || lowerText.startsWith("/unban ") || lowerText.startsWith("/loginowner ") || lowerText === "/setinfo" || tempState[senderId]) {
                         await handleMessage(senderId, text, lowerText);
                         commandHandled = true;
                     }
@@ -119,10 +141,13 @@ app.post('/webhook', async (req, res) => {
                             await sendMessage(activeChats[senderId], text);
                         } else if (event.message.attachments) {
                             const att = event.message.attachments[0];
-                            if (att.type === 'image') await sendImage(activeChats[senderId], att.payload.url);
+                            if (['image', 'audio', 'video'].includes(att.type)) {
+                                await sendAttachment(activeChats[senderId], att.type, att.payload.url);
+                            }
                         } else if (text) {
                             userMessageCount[senderId] = (userMessageCount[senderId] || 0) + 1;
-                            await sendMessage(activeChats[senderId], text);
+                            const cleanText = filterBadWords(text);
+                            await sendMessage(activeChats[senderId], cleanText);
                         }
                     } else {
                         if (lowerText === "chat" || lowerText === "/profile") {
@@ -135,9 +160,7 @@ app.post('/webhook', async (req, res) => {
             });
         });
         res.status(200).send('EVENT_RECEIVED');
-    } else {
-        res.sendStatus(404);
-    }
+    } else { res.sendStatus(404); }
 });
 
 // ==========================
@@ -159,26 +182,17 @@ async function handleMessage(senderId, text, lowerText) {
             tempState[senderId] = { step: 1, data: { role: userData ? userData.role : "member" } };
             return sendMessage(senderId, `📝 ${mode}: STEP 1/2\n────────────────────\nPlease enter your username (2-20 characters):`);
         }
-
         const state = tempState[senderId];
         if (state.step === 1) {
-            if (!text || text.length < 2 || text.length > 20) {
-                return sendMessage(senderId, "⚠️ INVALID USERNAME\n────────────────────\nName must be 2-20 characters. Try again:");
-            }
+            if (!text || text.length < 2 || text.length > 20) return sendMessage(senderId, "⚠️ INVALID USERNAME\n────────────────────\nName must be 2-20 characters. Try again:");
             const existing = await User.findOne({ name: text });
-            if (existing && existing.psid !== senderId) {
-                return sendMessage(senderId, "❌ NAME TAKEN\n────────────────────\nThis username is already in use. Please choose another one:");
-            }
-            state.data.name = text;
-            state.step = 2;
+            if (existing && existing.psid !== senderId) return sendMessage(senderId, "❌ NAME TAKEN\n────────────────────\nThis username is already in use. Please choose another one:");
+            state.data.name = text; state.step = 2;
             return sendMessage(senderId, `📝 STEP 2/2\n────────────────────\nPlease enter your age (15-100):`);
         }
-        
         if (state.step === 2) {
             const ageNum = parseInt(text);
-            if (isNaN(ageNum)) return sendMessage(senderId, "❌ TYPE ERROR\n────────────────────\nThat's not a number! Enter age using digits:");
-            if (ageNum < 15 || ageNum > 100) return sendMessage(senderId, "⚠️ OUT OF RANGE\n────────────────────\nAge must be between 15-100. Try again:");
-            
+            if (isNaN(ageNum) || ageNum < 15 || ageNum > 100) return sendMessage(senderId, "❌ ERROR\n────────────────────\nAge must be a number between 15-100:");
             state.data.age = ageNum;
             await User.findOneAndUpdate({ psid: senderId }, state.data, { upsert: true });
             delete tempState[senderId];
@@ -193,53 +207,9 @@ async function handleMessage(senderId, text, lowerText) {
         return sendMessage(senderId, `👤 PROFILE INFO\n────────────────────\nName: ${userData.name}\nAge: ${userData.age}\nRole: ${userData.role.toUpperCase()}`);
     }
 
-    if (lowerText.startsWith("/admin ")) {
-        if (userData.role !== "owner") return sendMessage(senderId, "❌ PERMISSION DENIED");
-        const parts = text.split(" ");
-        const targetName = parts.slice(2).join(" ");
-        const targetUser = await User.findOne({ name: targetName });
-        if (!targetUser) return sendMessage(senderId, "❌ USER NOT FOUND");
-        if (parts[1] === "add") {
-            targetUser.role = "admin";
-            await targetUser.save();
-            return sendMessage(senderId, `✅ SUCCESS: ${targetName} is now admin.`);
-        } else if (parts[1] === "remove") {
-            targetUser.role = "member";
-            await targetUser.save();
-            return sendMessage(senderId, `✅ SUCCESS: ${targetName} demoted.`);
-        }
-    }
-
-    if (lowerText.startsWith("/ban ")) {
-        if (userData.role !== "owner" && userData.role !== "admin") return sendMessage(senderId, "❌ PERMISSION DENIED");
-        const targetName = text.split(" ").slice(1).join(" ");
-        const targetUser = await User.findOne({ name: targetName });
-        if (!targetUser) return sendMessage(senderId, "❌ USER NOT FOUND");
-        if (targetUser.role === "owner" || (targetUser.role === "admin" && userData.role !== "owner")) return sendMessage(senderId, "❌ PROTECTION ERROR");
-        targetUser.isBanned = true;
-        await targetUser.save();
-        if (activeChats[targetUser.psid]) {
-            const partner = activeChats[targetUser.psid];
-            delete activeChats[targetUser.psid]; delete activeChats[partner];
-            await sendMessage(partner, "⚠️ SYSTEM\n────────────────────\nYour partner was banned.");
-        }
-        return sendMessage(senderId, `🚫 BANNED: ${targetName}`);
-    }
-
-    if (lowerText.startsWith("/unban ")) {
-        if (userData.role !== "owner" && userData.role !== "admin") return sendMessage(senderId, "❌ PERMISSION DENIED");
-        const targetName = text.split(" ").slice(1).join(" ");
-        const targetUser = await User.findOne({ name: targetName });
-        if (targetUser) {
-            targetUser.isBanned = false;
-            await targetUser.save();
-            return sendMessage(senderId, `🔓 UNBANNED: ${targetName}`);
-        }
-    }
-
     if (lowerText === "chat") {
         if (activeChats[senderId]) return sendMessage(senderId, "⚠️ ALERT\nYou are already in a chat.");
-        if (waitingQueue.includes(senderId)) return sendMessage(senderId, "🔍 SEARCHING...\nSearching for a partner...");
+        if (waitingQueue.includes(senderId)) return sendMessage(senderId, "🔍 SEARCHING...\n────────────────────\NSearching for a partner...");
         const partner = waitingQueue.shift();
         if (partner) {
             activeChats[senderId] = partner; activeChats[partner] = senderId;
@@ -247,7 +217,7 @@ async function handleMessage(senderId, text, lowerText) {
             const pData = await User.findOne({ psid: partner });
             const myData = await User.findOne({ psid: senderId });
 
-            const guide = `\n────────────────────\n💬 GUIDE:\n- Send messages, images, or links\n- Type 'quit' to end chat\n- Be respectful!`;
+            const guide = `\n────────────────────\n✨TIPS & FEATURES:\n- Audio/Video messages allowed!\n- bad words are censored with asterisk!\n\n💬 GUIDE:\n- Can send images, audio(VM), video.\n- Type 'quit' to end chat\n- Be respectful!`;
             
             await sendMessage(senderId, `🎉 CONNECTED!\n────────────────────\nPartner: ${pData.name}\nAge: ${pData.age}\nRole: ${pData.role.toUpperCase()}${guide}`);
             await sendMessage(partner, `🎉 CONNECTED!\n────────────────────\nPartner: ${myData.name}\nAge: ${myData.age}\nRole: ${myData.role.toUpperCase()}${guide}`);
@@ -271,8 +241,8 @@ async function sendMessage(id, text) {
     try { await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, { recipient: { id }, message: { text } }); } catch (e) {}
 }
 
-async function sendImage(id, url) {
-    try { await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, { recipient: { id }, message: { attachment: { type: "image", payload: { url } } } }); } catch (e) {}
+async function sendAttachment(id, type, url) {
+    try { await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, { recipient: { id }, message: { attachment: { type, payload: { url } } } }); } catch (e) {}
 }
 
 async function markSeen(id) {
