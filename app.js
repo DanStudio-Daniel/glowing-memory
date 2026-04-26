@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model("User", userSchema);
 
 // ==========================
-// 🚫 PROFANITY FILTER
+// 🚫 PROFANITY FILTER (REVEAL 1ST, 3RD, LAST)
 // ==========================
 const badWords = [
     "stupid", "idiot", "fuck", "shit", "bitch", "asshole", "dick", "pussy", "faggot", "bastard", 
@@ -66,8 +66,22 @@ function filterBadWords(text) {
             if (char === 'p') v = '[p|]';
             return v + '+';
         }).join('[\\s\\W\\._]*');
+        
         const regex = new RegExp(pattern, 'gi');
-        filteredText = filteredText.replace(regex, (matched) => "*".repeat(matched.length));
+        filteredText = filteredText.replace(regex, (matched) => {
+            if (matched.length <= 2) return "*".repeat(matched.length);
+            
+            // Censor pattern: Reveal first, 3rd, and last (s*u*i*d style)
+            let result = "";
+            for (let i = 0; i < matched.length; i++) {
+                if (i === 0 || i === 2 || i === matched.length - 1) {
+                    result += matched[i];
+                } else {
+                    result += "*";
+                }
+            }
+            return result;
+        });
     });
     return filteredText;
 }
@@ -78,9 +92,8 @@ function filterBadWords(text) {
 async function announceUpdate() {
     try {
         const users = await User.find({}, 'psid');
-        const message = `📢 BOT UPDATE\n────────────────────\nBot has been updated!\n\n✨ WHAT'S NEW:\n- Send Audio 🎙️\n- Send Video 📹\n- Asterisk Bad Words System 🚫\n\nConversations were cut during update. Reply 'chat' to find a new stranger!`;
+        const message = `📢 BOT UPDATE\n────────────────────\nBot has been updated!\n\n✨ FIXES & FEATURES:\n- Fixed asterisk bad words (st*p*d / iy*t style) 🚫\n- Audio & Video sharing enabled 🎙️\n- Better connection stability\n\nConversations were reset. Reply 'chat' to find a new stranger!`;
         for (let user of users) { await sendMessage(user.psid, message); }
-        console.log(`🚀 Announcement sent to ${users.length} users.`);
     } catch (e) { console.log("❌ Announcement Error"); }
 }
 
@@ -102,21 +115,17 @@ app.post('/webhook', async (req, res) => {
         body.entry.forEach(entry => {
             entry.messaging.forEach(async event => {
                 const senderId = event.sender.id;
-
                 if (event.read && activeChats[senderId]) {
                     await markSeen(activeChats[senderId]);
                     return;
                 }
-
                 const userData = await User.findOne({ psid: senderId });
                 if (userData && userData.isBanned) return;
-
                 await markSeen(senderId);
 
                 if (event.message) {
                     const text = event.message.text;
                     const lowerText = text ? text.toLowerCase() : "";
-
                     let commandHandled = false;
                     
                     if (lowerText === "quit" || lowerText === "/profile" || lowerText === "chat") {
@@ -209,7 +218,7 @@ async function handleMessage(senderId, text, lowerText) {
 
     if (lowerText === "chat") {
         if (activeChats[senderId]) return sendMessage(senderId, "⚠️ ALERT\nYou are already in a chat.");
-        if (waitingQueue.includes(senderId)) return sendMessage(senderId, "🔍 SEARCHING...\n────────────────────\NSearching for a partner...");
+        if (waitingQueue.includes(senderId)) return sendMessage(senderId, "🔍 SEARCHING...\nSearching for a partner...");
         const partner = waitingQueue.shift();
         if (partner) {
             activeChats[senderId] = partner; activeChats[partner] = senderId;
@@ -217,10 +226,10 @@ async function handleMessage(senderId, text, lowerText) {
             const pData = await User.findOne({ psid: partner });
             const myData = await User.findOne({ psid: senderId });
 
-            const guide = `\n────────────────────\n✨TIPS & FEATURES:\n- Audio/Video messages allowed!\n- bad words are censored with asterisk!\n\n💬 GUIDE:\n- Can send images, audio(VM), video.\n- Type 'quit' to end chat\n- Be respectful!`;
+            const guide = `\n────────────────────\n💬 GUIDE:\n- Can send images, voice message, video.\n- Type 'quit' to end chat\n- have fun`;
             
-            await sendMessage(senderId, `🎉 CONNECTED!\n────────────────────\nPartner: ${pData.name}\nAge: ${pData.age}\nRole: ${pData.role.toUpperCase()}${guide}`);
-            await sendMessage(partner, `🎉 CONNECTED!\n────────────────────\nPartner: ${myData.name}\nAge: ${myData.age}\nRole: ${myData.role.toUpperCase()}${guide}`);
+            await sendMessage(senderId, `🎉 CONNECTED!\n────────────────────\nPartner: ${pData.name}\nAge: ${pData.age}${guide}`);
+            await sendMessage(partner, `🎉 CONNECTED!\n────────────────────\nPartner: ${myData.name}\nAge: ${myData.age}${guide}`);
         } else {
             waitingQueue.push(senderId);
             await sendMessage(senderId, "🔍 SEARCHING...\n────────────────────\nLooking for a partner. Please wait...");
