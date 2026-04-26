@@ -70,15 +70,11 @@ function filterBadWords(text) {
         const regex = new RegExp(pattern, 'gi');
         filteredText = filteredText.replace(regex, (matched) => {
             if (matched.length <= 2) return "*".repeat(matched.length);
-            
-            // Censor pattern: Reveal first, 3rd, and last (s*u*i*d style)
             let result = "";
             for (let i = 0; i < matched.length; i++) {
                 if (i === 0 || i === 2 || i === matched.length - 1) {
                     result += matched[i];
-                } else {
-                    result += "*";
-                }
+                } else { result += "*"; }
             }
             return result;
         });
@@ -92,7 +88,7 @@ function filterBadWords(text) {
 async function announceUpdate() {
     try {
         const users = await User.find({}, 'psid');
-        const message = `📢 BOT UPDATE\n────────────────────\nBot has been updated!\n\n✨ FIXES & FEATURES:\n- Fixed asterisk bad words (st*p*d / iy*t style) 🚫\n- Audio & Video sharing enabled 🎙️\n- Better connection stability\n\nConversations were reset. Reply 'chat' to find a new stranger!`;
+        const message = `📢 BOT UPDATE\n────────────────────\nBot has been updated!\n\n✨ NEW FEATURES:\n- Added Ban System🚫\n- Fixed asterisk bad words (st*p*d style)\n\nConversations were reset. Reply 'chat' to find a new stranger!`;
         for (let user of users) { await sendMessage(user.psid, message); }
     } catch (e) { console.log("❌ Announcement Error"); }
 }
@@ -213,7 +209,52 @@ async function handleMessage(senderId, text, lowerText) {
     if (!userData) return;
 
     if (lowerText === "/profile") {
-        return sendMessage(senderId, `👤 PROFILE INFO\n────────────────────\nName: ${userData.name}\nAge: ${userData.age}\nRole: ${userData.role.toUpperCase()}`);
+        return sendMessage(senderId, `👤 PROFILE INFO\n────────────────────\nName: ${userData.name}\nAge: ${userData.age}\nBadge: ${userData.role.toUpperCase()}`);
+    }
+
+    if (lowerText.startsWith("/admin ")) {
+        if (userData.role !== "owner") return sendMessage(senderId, "❌ PERMISSION DENIED");
+        const parts = text.split(" ");
+        const subCommand = parts[1];
+        const targetName = parts.slice(2).join(" "); 
+        const targetUser = await User.findOne({ name: targetName });
+        if (!targetUser) return sendMessage(senderId, "❌ USER NOT FOUND");
+        if (subCommand === "add") {
+            targetUser.role = "admin";
+            await targetUser.save();
+            return sendMessage(senderId, `✅ SUCCESS: ${targetName} is now an ADMIN.`);
+        } else if (subCommand === "remove") {
+            targetUser.role = "member";
+            await targetUser.save();
+            return sendMessage(senderId, `✅ SUCCESS: ${targetName} demoted to MEMBER.`);
+        }
+    }
+
+    if (lowerText.startsWith("/ban ")) {
+        if (userData.role !== "owner" && userData.role !== "admin") return sendMessage(senderId, "❌ PERMISSION DENIED");
+        const targetName = text.split(" ").slice(1).join(" ");
+        const targetUser = await User.findOne({ name: targetName });
+        if (!targetUser) return sendMessage(senderId, "❌ USER NOT FOUND");
+        if (targetUser.role === "owner" || (targetUser.role === "admin" && userData.role !== "owner")) return sendMessage(senderId, "❌ PROTECTION ERROR");
+        targetUser.isBanned = true;
+        await targetUser.save();
+        if (activeChats[targetUser.psid]) {
+            const partner = activeChats[targetUser.psid];
+            delete activeChats[targetUser.psid]; delete activeChats[partner];
+            await sendMessage(partner, "⚠️ SYSTEM\n────────────────────\nYour partner was banned from the bot.");
+        }
+        return sendMessage(senderId, `🚫 BANNED: ${targetName}`);
+    }
+
+    if (lowerText.startsWith("/unban ")) {
+        if (userData.role !== "owner" && userData.role !== "admin") return sendMessage(senderId, "❌ PERMISSION DENIED");
+        const targetName = text.split(" ").slice(1).join(" ");
+        const targetUser = await User.findOne({ name: targetName });
+        if (targetUser) {
+            targetUser.isBanned = false;
+            await targetUser.save();
+            return sendMessage(senderId, `🔓 UNBANNED: ${targetName}`);
+        }
     }
 
     if (lowerText === "chat") {
@@ -226,10 +267,10 @@ async function handleMessage(senderId, text, lowerText) {
             const pData = await User.findOne({ psid: partner });
             const myData = await User.findOne({ psid: senderId });
 
-            const guide = `\n────────────────────\n💬 GUIDE:\n- Can send images, voice message, video.\n- Type 'quit' to end chat\n- have fun`;
+            const guide = `\n────────────────────\n💬 GUIDE:\n- Can send images, voice messages, and video\n- Type 'quit' to end chat\n- Be respectful!`;
             
-            await sendMessage(senderId, `🎉 CONNECTED!\n────────────────────\nPartner: ${pData.name}\nAge: ${pData.age}${guide}`);
-            await sendMessage(partner, `🎉 CONNECTED!\n────────────────────\nPartner: ${myData.name}\nAge: ${myData.age}${guide}`);
+            await sendMessage(senderId, `🎉 CONNECTED!\n────────────────────\nPartner: ${pData.name}\nAge: ${pData.age}\nBadge: ${pData.role.toUpperCase()}${guide}`);
+            await sendMessage(partner, `🎉 CONNECTED!\n────────────────────\nPartner: ${myData.name}\nAge: ${myData.age}\nBadge: ${myData.role.toUpperCase()}${guide}`);
         } else {
             waitingQueue.push(senderId);
             await sendMessage(senderId, "🔍 SEARCHING...\n────────────────────\nLooking for a partner. Please wait...");
