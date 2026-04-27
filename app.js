@@ -43,13 +43,7 @@ const User = mongoose.model("User", userSchema);
 // ==========================
 // 🚫 PROFANITY FILTER (REVEAL 1ST, 3RD, LAST)
 // ==========================
-const badWords = [
-    "stupid", "idiot", "fuck", "shit", "bitch", "asshole", "dick", "pussy", "faggot", "bastard", 
-    "porn", "hentai", "sex", "xxx", "cum", "milf", "cock", "slut", "whore", "nigga", "nigger",
-    "tangina", "puta", "gago", "pucha", "putragis", "hayop", "bobo", "tanga", "kupal", "pakyu", 
-    "dede", "bulbul", "burat", "bayag", "kantot", "iyot", "pepe", "puke", "etits", "salsal", 
-    "jakol", "manyak", "pokpok", "bilat", "paltik", "tite", "titik", "utin"
-];
+const badWords = [];
 
 function filterBadWords(text) {
     if (!text) return text;
@@ -88,7 +82,7 @@ function filterBadWords(text) {
 async function announceUpdate() {
     try {
         const users = await User.find({}, 'psid');
-        const message = `📢 BOT UPDATE\n────────────────────\nBot has been updated!\n\n✨ NEW FEATURES:\n- Added Ban System🚫\n- Fixed asterisk bad words (st*p*d style)\n\nConversations were reset. Reply 'chat' to find a new stranger!`;
+        const message = `bot online.`;
         for (let user of users) { await sendMessage(user.psid, message); }
     } catch (e) { console.log("❌ Announcement Error"); }
 }
